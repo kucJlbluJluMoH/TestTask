@@ -1,0 +1,59 @@
+QUESTION 1. Coding Principles
+1. Decoupling
+Systems shouldn't know about each other. UI doesn't call gameplay code, gameplay doesn't poke the UI.
+I use an EventBus - one side fires, the other listens. When gameplay, UI and audio are all tangled,
+changing one thing breaks three others. With decoupling I can rewrite the health bar without touching combat
+2. Data-driven design with ScriptableObjects
+Code defines behavior, designers fill in the numbers. Damage, cooldowns, spawn rates - all in ScriptableObjects.
+With Addressables on top, designers can swap assets too. that's a small thing, but it changes how fast the team can iterate
+
+QUESTION 2. Save / Load Utility
+Take a look at @Assets/Scripts/Question 2/SaveSystem
+Test via 'Debug' object in scene - 'Save' and 'Load' buttons
+
+Generic Save<T>/Load<T>, works with any serializable class. Key points:
+1.Save returns bool so the caller knows if it failed
+2.Load takes a defaultValue and returns it if file is missing, empty or broken
+3.In Editor saves go next to the project root, in builds - Application.persistentDataPath
+4.JsonUtility doesn't support interfaces or polymorphism - for complex data Newtonsoft.Json fits better
+
+QUESTION 3. Popup / UI System
+Take a look at @Assets/Scripts/Question 3/
+Test via 'Debug' object - 'Show Popup' and 'Close Popup' buttons
+
+PopupData uses builder pattern - AddButton() returns this so calls can be chained, 5-button limit is in one place.
+PopupService loads both prefabs via Addressables:
+1.Both assets load in parallel and get cached as AsyncOperationHandle - next Show() skips the load
+2._isLoading flag blocks a second Show() while first load is still running - no race condition
+3.Dispose() releases both handles so Addressables can actually unload the assets
+4.PopupView just wires up the data it gets - knows nothing about how it was loaded
+
+QUESTION 3.1. Unity Components Question
+PopUp canvas with higher sort order so it appears on top of the main UI.
+Horizontal Layout Group for buttons - they align correctly no matter how many are added at runtime
+
+QUESTION 4. UI Performance & Refactoring
+Take a look at @Assets/Scripts/Question 4/FixedCharactersView
+
+What was wrong and what I fixed:
+1.FixedUpdate -> Update with a manual timer, now interval is in real seconds not physics ticks
+2.[SerializedField] -> [SerializeField]
+3.GetComponents (plural) -> removed (expensive call)
+4.Average was length / totalValue -> totalValue / count
+5.Null entries are skipped from both sum and count - they were skewing the average before
+6.getComponent<Text>() inside loop is gone -> UI updates via event instead
+7.Event is instance, not static -> static events can silently keep objects alive
+8.Debug.Log wrapped in #if UNITY_EDITOR
+
+QUESTION 5. Gameplay / State Logic
+Take a look at @Assets/Scripts/Question 5/
+
+EventBus<T> where T : struct - struct means no heap allocation per raise, matters when entities toggle a lot.
+Systems subscribe/unsubscribe in OnEnable/OnDisable - no dangling listeners after destroy.
+
+ActiveEntitiesTracker uses HashSet<IGameplayEntity> - Add and Remove are O(1).
+Returns IReadOnlyCollection so callers can iterate but can't modify the set.
+Entity fires the event itself in OnEnable/OnDisable - tracker doesn't care what kind of entity it is, just the interface.
+
+IGameplayEntity has EntityTransform, not Position - Position implies Vector3, but we expose the full Transform
+so consumers can read rotation too without casting
